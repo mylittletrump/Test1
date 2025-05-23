@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Парсер Google Таблиц</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 40px;
+      background: #f9f9f9;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .project {
+      background: white;
+      border: 1px solid #ddd;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Введите ссылку на Google Таблицу</h1>
+
+  <input type="text" id="sheet-url" placeholder="https://docs.google.com/spreadsheets/d/... " />
+  <button onclick="loadData()">Загрузить данные</button>
+
+  <div id="projects"></div>
+
+  <!-- PapaParse библиотека для парсинга CSV -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse @5.4.1/papaparse.min.js"></script>
+
+  <script>
+    function extractCsvUrl(fullUrl) {
+      // Извлекаем ID таблицы
+      const match = fullUrl.match(/\/spreadsheets\/d\/([^\/]+)/);
+      if (!match || !match[1]) {
+        throw new Error("Не удалось извлечь ID таблицы");
+      }
+      const sheetName = "Лист1"; // Можно изменить или автоматизировать при необходимости
+      return `https://docs.google.com/spreadsheets/d/ ${match[1]}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
+    }
+
+    function loadData() {
+      const url = document.getElementById("sheet-url").value.trim();
+      if (!url) {
+        alert("Введите корректную ссылку");
+        return;
+      }
+
+      try {
+        const csvUrl = extractCsvUrl(url);
+        Papa.parse(csvUrl, {
+          download: true,
+          header: true,
+          skipEmptyLines: true,
+          complete: function(results) {
+            displayProjects(results.data);
+          },
+          error: function(err) {
+            console.error(err);
+            alert("Ошибка загрузки или парсинга данных.");
+          }
+        });
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    function displayProjects(data) {
+      const container = document.getElementById("projects");
+      container.innerHTML = "";
+
+      if (!data.length) {
+        container.innerHTML = "<p>Нет данных для отображения.</p>";
+        return;
+      }
+
+      data.forEach(row => {
+        const div = document.createElement("div");
+        div.className = "project";
+
+        div.innerHTML = `
+          <h2>${row["Название"] || "Без названия"}</h2>
+          <p><strong>Год:</strong> ${row["Год"]}</p>
+          <p><strong>Материалы:</strong> ${row["Материалы"]}</p>
+          <p><strong>Размер:</strong> ${row["Размер"]}</p>
+          <p><strong>Описание:</strong> ${row["Описание"]}</p>
+          <p><strong>Техника:</strong> ${row["Техника"]}</p>
+          <p><strong>Выставки:</strong> ${(row["Выставки"] || "").split("; ").join("<br>")}</p>
+          <p><strong>Коллекции:</strong> ${(row["Коллекции"] || "").split("; ").join("<br>")}</p>
+          ${row["Изображение"] ? `<img src="${getImageUrl(row["Изображение"])}" alt="">` : ""}
+        `;
+
+        container.appendChild(div);
+      });
+    }
+
+    // Извлекает ID файла из ссылки Google Drive и даёт прямую ссылку на просмотр
+    function getImageUrl(link) {
+      const match = link.match(/file\/d\/([^\/]+)/);
+      if (match && match[1]) {
+        return `https://drive.google.com/uc?export=view&id= ${match[1]}`;
+      }
+      return "";
+    }
+  </script>
+
+</body>
+</html>
