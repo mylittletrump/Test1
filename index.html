@@ -41,6 +41,16 @@
       height: auto;
       margin-top: 10px;
     }
+
+    #log {
+      margin-top: 40px;
+      padding: 20px;
+      background: #eee;
+      border: 1px solid #ccc;
+      font-family: monospace;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
   </style>
 </head>
 <body>
@@ -51,44 +61,64 @@
   <button onclick="loadData()">Загрузить данные</button>
 
   <div id="projects"></div>
+  <div id="log">Лог: ожидание...</div>
 
-  <!-- PapaParse библиотека для парсинга CSV -->
+  <!-- PapaParse -->
   <script src="papaparse.min.js"></script>
 
   <script>
+    function log(message) {
+      const logDiv = document.getElementById("log");
+      logDiv.textContent += "\n" + new Date().toLocaleTimeString() + " — " + message;
+      console.log(message); // Также выводим в консоль браузера
+    }
+
     function extractCsvUrl(fullUrl) {
-      // Извлекаем ID таблицы
+      log("Извлечение CSV-ссылки...");
       const match = fullUrl.match(/\/spreadsheets\/d\/([^\/]+)/);
       if (!match || !match[1]) {
-        throw new Error("Не удалось извлечь ID таблицы");
+        const errorMsg = "Не удалось извлечь ID таблицы";
+        log("❌ Ошибка: " + errorMsg);
+        throw new Error(errorMsg);
       }
-      const sheetName = "Лист1"; // Можно изменить или автоматизировать при необходимости
-      return `https://docs.google.com/spreadsheets/d/ ${match[1]}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
+      const sheetName = "Лист1";
+      const csvUrl = `https://docs.google.com/spreadsheets/d/ ${match[1]}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
+      log("✅ CSV-ссылка создана: " + csvUrl);
+      return csvUrl;
     }
 
     function loadData() {
       const url = document.getElementById("sheet-url").value.trim();
+      log("🔄 Запуск загрузки данных...");
+
       if (!url) {
+        log("❌ Не указана ссылка на таблицу.");
         alert("Введите корректную ссылку");
         return;
       }
 
       try {
         const csvUrl = extractCsvUrl(url);
+
+        log("📥 Начинаю загрузку CSV...");
         Papa.parse(csvUrl, {
           download: true,
           header: true,
           skipEmptyLines: true,
           complete: function(results) {
+            log("📦 Данные получены:");
+            log(JSON.stringify(results, null, 2));
             displayProjects(results.data);
           },
           error: function(err) {
-            console.error(err);
-            alert("Ошибка загрузки или парсинга данных.");
+            log("🔥 Ошибка парсинга: " + err.message);
+            alert("Ошибка при парсинге данных: " + err.message);
           }
         });
+
       } catch (e) {
-        alert(e.message);
+        log("⚠️ Критическая ошибка: " + e.message);
+        alert("Ошибка: " + e.message);
       }
     }
 
@@ -98,10 +128,13 @@
 
       if (!data.length) {
         container.innerHTML = "<p>Нет данных для отображения.</p>";
+        log("⚠️ Данные загружены, но пустые.");
         return;
       }
 
-      data.forEach(row => {
+      log(`✅ Успешно загружено ${data.length} проектов`);
+
+      data.forEach((row, index) => {
         const div = document.createElement("div");
         div.className = "project";
 
@@ -121,7 +154,6 @@
       });
     }
 
-    // Извлекает ID файла из ссылки Google Drive и даёт прямую ссылку на просмотр
     function getImageUrl(link) {
       const match = link.match(/file\/d\/([^\/]+)/);
       if (match && match[1]) {
