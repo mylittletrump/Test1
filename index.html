@@ -1,43 +1,220 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Загрузчик картинок</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js "></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js "></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive Image Downloader</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #log {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .log-entry {
+            margin-bottom: 5px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        .info {
+            color: blue;
+        }
+        .warning {
+            color: orange;
+        }
+    </style>
 </head>
 <body>
-  <h1>Загрузчик картинок</h1>
-  <button onclick="downloadAndZip()">Скачать и упаковать в ZIP</button>
+    <div class="container">
+        <h1>Google Drive Image Downloader</h1>
+        <p>Введите ссылку на изображение в Google Drive:</p>
+        <input type="text" id="driveUrl" placeholder="https://drive.google.com/file/d/1an3SX4iyReVtN16MsMqVCWbJ1-oyYcIA/view?usp=drive_link">
+        <button onclick="processImage()">Создать ZIP с изображением и HTML</button>
+    </div>
 
-  <script>
-    async function downloadAndZip() {
-      const imageUrl = "https://drive.google.com/uc?id=1an3SX4iyReVtN16MsMqVCWbJ1-oyYcIA"; // замени ID
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
+    <div class="container">
+        <h2>Лог выполнения:</h2>
+        <div id="log"></div>
+    </div>
 
-      const zip = new JSZip();
-      const imgFolder = zip.folder("site");
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
-      // Добавляем картинку
-      imgFolder.file("image.jpg", blob);
+    <script>
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logElement.appendChild(entry);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
 
-      // Добавляем HTML
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <body>
-          <h1>Моя картинка:</h1>
-          <img src="image.jpg" width="500">
-        </body>
-        </html>
-      `;
-      imgFolder.file("index.html", htmlContent);
+        function extractFileId(url) {
+            log(`Анализ URL: ${url}`, 'info');
+            
+            const patterns = [
+                /\/file\/d\/([^\/]+)/,
+                /id=([^&]+)/,
+                /drive.google.com\/open\?id=([^&]+)/
+            ];
 
-      // Генерируем ZIP
-      const content = await zip.generateAsync({type: "blob"});
-      saveAs(content, "site.zip");
-    }
-  </script>
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match && match[1]) {
+                    log(`Найден ID файла: ${match[1]}`, 'success');
+                    return match[1];
+                }
+            }
+
+            throw new Error('Не удалось извлечь ID файла из ссылки');
+        }
+
+        async function downloadImage(fileId) {
+            log(`Загрузка изображения с ID: ${fileId}`, 'info');
+            const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+            
+            try {
+                const response = await fetch(directUrl);
+                if (!response.ok) throw new Error(`HTTP ошибка: ${response.status}`);
+                
+                const blob = await response.blob();
+                log(`Изображение успешно загружено (${(blob.size/1024).toFixed(2)} KB)`, 'success');
+                return blob;
+            } catch (error) {
+                log(`Ошибка загрузки изображения: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        function createHtmlContent(imageFileName) {
+            return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive Image Viewer</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            text-align: center;
+            max-width: 90%;
+        }
+        img {
+            max-width: 100%;
+            max-height: 80vh;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+        }
+        .filename {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="${imageFileName}" alt="Downloaded from Google Drive" 
+             onerror="document.body.innerHTML='<h1 style=color:red>Ошибка загрузки изображения</h1>'">
+        <div class="filename">${imageFileName}</div>
+    </div>
+</body>
+</html>`;
+        }
+
+        async function processImage() {
+            try {
+                const driveUrl = document.getElementById('driveUrl').value.trim();
+                if (!driveUrl) {
+                    log('Пожалуйста, введите ссылку на Google Drive', 'error');
+                    return;
+                }
+
+                log('Начало обработки...', 'info');
+                
+                // Извлекаем ID файла
+                const fileId = extractFileId(driveUrl);
+                
+                // Загружаем изображение
+                const imageBlob = await downloadImage(fileId);
+                const imageFileName = `image-${fileId}.${imageBlob.type.split('/')[1] || 'jpg'}`;
+                
+                // Создаем HTML-файл
+                const htmlContent = createHtmlContent(imageFileName);
+                log('HTML-файл сгенерирован', 'success');
+                
+                // Создаем ZIP-архив
+                const zip = new JSZip();
+                zip.file("viewer.html", htmlContent);
+                zip.file(imageFileName, imageBlob);
+                log(`Добавлено в архив: viewer.html и ${imageFileName}`, 'info');
+                
+                // Генерируем ZIP-архив
+                log('Создание ZIP-архива...', 'info');
+                const content = await zip.generateAsync({type: "blob"});
+                
+                // Сохраняем ZIP-архив
+                saveAs(content, "google-image.zip");
+                log('ZIP-архив успешно создан и скачан', 'success');
+                log('Теперь вы можете загрузить этот архив на Netlify', 'info');
+                
+            } catch (error) {
+                log(`Критическая ошибка: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+    </script>
 </body>
 </html>
