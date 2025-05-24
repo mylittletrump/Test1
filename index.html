@@ -1,220 +1,43 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Парсинг Google Таблицы</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .method {
-            margin-bottom: 30px;
-            border: 1px solid #ddd;
-            padding: 15px;
-            border-radius: 5px;
-        }
-        button {
-            padding: 8px 15px;
-            background-color: #4285f4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-right: 10px;
-        }
-        button:hover {
-            background-color: #3367d6;
-        }
-        pre {
-            background-color: #f5f5f5;
-            padding: 10px;
-            border-radius: 4px;
-            overflow-x: auto;
-        }
-        .log {
-            margin-top: 10px;
-            color: #666;
-        }
-        .error {
-            color: #d32f2f;
-        }
-        .success {
-            color: #388e3c;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 10px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Загрузчик картинок</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js "></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js "></script>
 </head>
 <body>
-    <h1>Парсинг Google Таблицы</h1>
-    <p>Ссылка на таблицу: <a href="https://docs.google.com/spreadsheets/d/1_bHeqc7FApWkG3t5UN2vgtPMgOnzBpioooHAPESp670/edit?gid=0#gid=0" target="_blank">https://docs.google.com/spreadsheets/d/1_bHeqc7FApWkG3t5UN2vgtPMgOnzBpioooHAPESp670</a></p>
+  <h1>Загрузчик картинок</h1>
+  <button onclick="downloadAndZip()">Скачать и упаковать в ZIP</button>
 
-    <div class="method">
-        <h2>Метод 1: Через gviz/tq (JSON)</h2>
-        <p>Получает данные через внутренний API Google Таблиц в формате JSON.</p>
-        <button onclick="parseViaGviz()">Загрузить данные</button>
-        <div class="log" id="gviz-log"></div>
-        <div id="gviz-result"></div>
-    </div>
+  <script>
+    async function downloadAndZip() {
+      const imageUrl = "https://drive.google.com/uc?id=YOUR_GOOGLE_DRIVE_FILE_ID "; // замени ID
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
 
-    <div class="method">
-        <h2>Метод 2: Через CSV-экспорт</h2>
-        <p>Получает данные в формате CSV (работает только если таблица опубликована).</p>
-        <button onclick="parseViaCsv()">Загрузить данные</button>
-        <div class="log" id="csv-log"></div>
-        <div id="csv-result"></div>
-    </div>
+      const zip = new JSZip();
+      const imgFolder = zip.folder("site");
 
-    <script>
-        // ID вашей таблицы (извлечен из URL)
-        const sheetId = '1_bHeqc7FApWkG3t5UN2vgtPMgOnzBpioooHAPESp670';
-        // Название листа (по умолчанию - первый лист)
-        const sheetName = 'Sheet1';
+      // Добавляем картинку
+      imgFolder.file("image.jpg", blob);
 
-        // Логгирование
-        function logToElement(elementId, message, isError = false) {
-            const element = document.getElementById(elementId);
-            const logEntry = document.createElement('div');
-            logEntry.textContent = message;
-            logEntry.className = isError ? 'error' : 'success';
-            element.appendChild(logEntry);
-        }
+      // Добавляем HTML
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <body>
+          <h1>Моя картинка:</h1>
+          <img src="image.jpg" width="500">
+        </body>
+        </html>
+      `;
+      imgFolder.file("index.html", htmlContent);
 
-        // Метод 1: Через gviz/tq (JSON)
-        async function parseViaGviz() {
-            const logElement = 'gviz-log';
-            const resultElement = 'gviz-result';
-            
-            // Очищаем предыдущие результаты
-            document.getElementById(logElement).innerHTML = '';
-            document.getElementById(resultElement).innerHTML = '';
-
-            logToElement(logElement, 'Начало загрузки данных через gviz/tq...');
-            
-            try {
-                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
-                logToElement(logElement, `Отправляем запрос по URL: ${url}`);
-
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`Ошибка HTTP: ${response.status}`);
-                }
-
-                const text = await response.text();
-                logToElement(logElement, 'Получен ответ от сервера. Обрабатываем JSON...');
-
-                // Обработка специфичного формата Google
-                const json = JSON.parse(text.substring(47).slice(0, -2));
-                logToElement(logElement, 'Данные успешно преобразованы в JSON');
-
-                // Преобразуем данные в таблицу HTML
-                let tableHtml = '<h3>Результат:</h3><table>';
-                
-                // Заголовки таблицы
-                tableHtml += '<tr>';
-                json.table.cols.forEach(col => {
-                    tableHtml += `<th>${col.label || ''}</th>`;
-                });
-                tableHtml += '</tr>';
-
-                // Строки таблицы
-                json.table.rows.forEach(row => {
-                    tableHtml += '<tr>';
-                    row.c.forEach(cell => {
-                        tableHtml += `<td>${cell?.v || ''}</td>`;
-                    });
-                    tableHtml += '</tr>';
-                });
-
-                tableHtml += '</table>';
-                document.getElementById(resultElement).innerHTML = tableHtml;
-                logToElement(logElement, 'Данные успешно отображены в таблице');
-
-            } catch (error) {
-                logToElement(logElement, `Ошибка: ${error.message}`, true);
-                document.getElementById(resultElement).innerHTML = 
-                    `<p class="error">Ошибка при загрузке данных: ${error.message}</p>`;
-            }
-        }
-
-        // Метод 2: Через CSV-экспорт
-        async function parseViaCsv() {
-            const logElement = 'csv-log';
-            const resultElement = 'csv-result';
-            
-            // Очищаем предыдущие результаты
-            document.getElementById(logElement).innerHTML = '';
-            document.getElementById(resultElement).innerHTML = '';
-
-            logToElement(logElement, 'Начало загрузки данных через CSV...');
-            
-            try {
-                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`;
-                logToElement(logElement, `Отправляем запрос по URL: ${url}`);
-
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`Ошибка HTTP: ${response.status}. Возможно, таблица не опубликована.`);
-                }
-
-                const csvData = await response.text();
-                logToElement(logElement, 'CSV данные получены. Обрабатываем...');
-
-                // Парсим CSV
-                const rows = csvData.split('\n');
-                if (rows.length === 0) {
-                    throw new Error('CSV файл пуст');
-                }
-
-                // Создаем HTML таблицу
-                let tableHtml = '<h3>Результат:</h3><table>';
-                
-                // Заголовки
-                const headers = rows[0].split(',');
-                tableHtml += '<tr>';
-                headers.forEach(header => {
-                    tableHtml += `<th>${header}</th>`;
-                });
-                tableHtml += '</tr>';
-
-                // Строки данных
-                for (let i = 1; i < rows.length; i++) {
-                    const cells = rows[i].split(',');
-                    tableHtml += '<tr>';
-                    cells.forEach(cell => {
-                        tableHtml += `<td>${cell}</td>`;
-                    });
-                    tableHtml += '</tr>';
-                }
-
-                tableHtml += '</table>';
-                document.getElementById(resultElement).innerHTML = tableHtml;
-                logToElement(logElement, 'CSV данные успешно преобразованы в таблицу');
-
-            } catch (error) {
-                logToElement(logElement, `Ошибка: ${error.message}`, true);
-                document.getElementById(resultElement).innerHTML = 
-                    `<p class="error">Ошибка при загрузке CSV: ${error.message}</p>
-                     <p>Убедитесь, что таблица опубликована (Файл → Публикация в Интернете → Опубликовать).</p>`;
-            }
-        }
-    </script>
+      // Генерируем ZIP
+      const content = await zip.generateAsync({type: "blob"});
+      saveAs(content, "site.zip");
+    }
+  </script>
 </body>
 </html>
