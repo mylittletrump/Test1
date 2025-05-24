@@ -1,167 +1,220 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Парсер Google Таблиц</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 40px;
-      background: #f9f9f9;
-      color: #333;
-    }
-
-    h1 {
-      text-align: center;
-    }
-
-    input[type="text"] {
-      width: 100%;
-      padding: 10px;
-      font-size: 16px;
-      margin-bottom: 20px;
-    }
-
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      cursor: pointer;
-    }
-
-    .project {
-      background: white;
-      border: 1px solid #ddd;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
-
-    img {
-      max-width: 100%;
-      height: auto;
-      margin-top: 10px;
-    }
-
-    #log {
-      margin-top: 40px;
-      padding: 20px;
-      background: #eee;
-      border: 1px solid #ccc;
-      font-family: monospace;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Парсинг Google Таблицы</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .method {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #3367d6;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .log {
+            margin-top: 10px;
+            color: #666;
+        }
+        .error {
+            color: #d32f2f;
+        }
+        .success {
+            color: #388e3c;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 10px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
 </head>
 <body>
+    <h1>Парсинг Google Таблицы</h1>
+    <p>Ссылка на таблицу: <a href="https://docs.google.com/spreadsheets/d/1_bHeqc7FApWkG3t5UN2vgtPMgOnzBpioooHAPESp670/edit?gid=0#gid=0" target="_blank">https://docs.google.com/spreadsheets/d/1_bHeqc7FApWkG3t5UN2vgtPMgOnzBpioooHAPESp670</a></p>
 
-  <h1>Введите ссылку на Google Таблицу</h1>
+    <div class="method">
+        <h2>Метод 1: Через gviz/tq (JSON)</h2>
+        <p>Получает данные через внутренний API Google Таблиц в формате JSON.</p>
+        <button onclick="parseViaGviz()">Загрузить данные</button>
+        <div class="log" id="gviz-log"></div>
+        <div id="gviz-result"></div>
+    </div>
 
-  <input type="text" id="sheet-url" placeholder="https://docs.google.com/spreadsheets/d/... " />
-  <button onclick="loadData()">Загрузить данные</button>
+    <div class="method">
+        <h2>Метод 2: Через CSV-экспорт</h2>
+        <p>Получает данные в формате CSV (работает только если таблица опубликована).</p>
+        <button onclick="parseViaCsv()">Загрузить данные</button>
+        <div class="log" id="csv-log"></div>
+        <div id="csv-result"></div>
+    </div>
 
-  <div id="projects"></div>
-  <div id="log">Лог: ожидание...</div>
+    <script>
+        // ID вашей таблицы (извлечен из URL)
+        const sheetId = '1_bHeqc7FApWkG3t5UN2vgtPMgOnzBpioooHAPESp670';
+        // Название листа (по умолчанию - первый лист)
+        const sheetName = 'Sheet1';
 
-  <!-- PapaParse -->
-  <script src="papaparse.min.js"></script>
+        // Логгирование
+        function logToElement(elementId, message, isError = false) {
+            const element = document.getElementById(elementId);
+            const logEntry = document.createElement('div');
+            logEntry.textContent = message;
+            logEntry.className = isError ? 'error' : 'success';
+            element.appendChild(logEntry);
+        }
 
-  <script>
-    function log(message) {
-      const logDiv = document.getElementById("log");
-      logDiv.textContent += "\n" + new Date().toLocaleTimeString() + " — " + message;
-      console.log(message); // Также выводим в консоль браузера
-    }
+        // Метод 1: Через gviz/tq (JSON)
+        async function parseViaGviz() {
+            const logElement = 'gviz-log';
+            const resultElement = 'gviz-result';
+            
+            // Очищаем предыдущие результаты
+            document.getElementById(logElement).innerHTML = '';
+            document.getElementById(resultElement).innerHTML = '';
 
-    function extractCsvUrl(fullUrl) {
-      log("Извлечение CSV-ссылки...");
-      const match = fullUrl.match(/\/spreadsheets\/d\/([^\/]+)/);
-      if (!match || !match[1]) {
-        const errorMsg = "Не удалось извлечь ID таблицы";
-        log("❌ Ошибка: " + errorMsg);
-        throw new Error(errorMsg);
-      }
-      const sheetName = "Лист1";
-      const csvUrl = `https://docs.google.com/spreadsheets/d/ ${match[1]}/gviz/tq?tqx=out:csv&sheet=${sheetName}`;
-      log("✅ CSV-ссылка создана: " + csvUrl);
-      return csvUrl;
-    }
+            logToElement(logElement, 'Начало загрузки данных через gviz/tq...');
+            
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
+                logToElement(logElement, `Отправляем запрос по URL: ${url}`);
 
-    function loadData() {
-      const url = document.getElementById("sheet-url").value.trim();
-      log("🔄 Запуск загрузки данных...");
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка HTTP: ${response.status}`);
+                }
 
-      if (!url) {
-        log("❌ Не указана ссылка на таблицу.");
-        alert("Введите корректную ссылку");
-        return;
-      }
+                const text = await response.text();
+                logToElement(logElement, 'Получен ответ от сервера. Обрабатываем JSON...');
 
-      try {
-        const csvUrl = extractCsvUrl(url);
+                // Обработка специфичного формата Google
+                const json = JSON.parse(text.substring(47).slice(0, -2));
+                logToElement(logElement, 'Данные успешно преобразованы в JSON');
 
-        log("📥 Начинаю загрузку CSV...");
-        Papa.parse(csvUrl, {
-          download: true,
-          header: true,
-          skipEmptyLines: true,
-          complete: function(results) {
-            log("📦 Данные получены:");
-            log(JSON.stringify(results, null, 2));
-            displayProjects(results.data);
-          },
-          error: function(err) {
-            log("🔥 Ошибка парсинга: " + err.message);
-            alert("Ошибка при парсинге данных: " + err.message);
-          }
-        });
+                // Преобразуем данные в таблицу HTML
+                let tableHtml = '<h3>Результат:</h3><table>';
+                
+                // Заголовки таблицы
+                tableHtml += '<tr>';
+                json.table.cols.forEach(col => {
+                    tableHtml += `<th>${col.label || ''}</th>`;
+                });
+                tableHtml += '</tr>';
 
-      } catch (e) {
-        log("⚠️ Критическая ошибка: " + e.message);
-        alert("Ошибка: " + e.message);
-      }
-    }
+                // Строки таблицы
+                json.table.rows.forEach(row => {
+                    tableHtml += '<tr>';
+                    row.c.forEach(cell => {
+                        tableHtml += `<td>${cell?.v || ''}</td>`;
+                    });
+                    tableHtml += '</tr>';
+                });
 
-    function displayProjects(data) {
-      const container = document.getElementById("projects");
-      container.innerHTML = "";
+                tableHtml += '</table>';
+                document.getElementById(resultElement).innerHTML = tableHtml;
+                logToElement(logElement, 'Данные успешно отображены в таблице');
 
-      if (!data.length) {
-        container.innerHTML = "<p>Нет данных для отображения.</p>";
-        log("⚠️ Данные загружены, но пустые.");
-        return;
-      }
+            } catch (error) {
+                logToElement(logElement, `Ошибка: ${error.message}`, true);
+                document.getElementById(resultElement).innerHTML = 
+                    `<p class="error">Ошибка при загрузке данных: ${error.message}</p>`;
+            }
+        }
 
-      log(`✅ Успешно загружено ${data.length} проектов`);
+        // Метод 2: Через CSV-экспорт
+        async function parseViaCsv() {
+            const logElement = 'csv-log';
+            const resultElement = 'csv-result';
+            
+            // Очищаем предыдущие результаты
+            document.getElementById(logElement).innerHTML = '';
+            document.getElementById(resultElement).innerHTML = '';
 
-      data.forEach((row, index) => {
-        const div = document.createElement("div");
-        div.className = "project";
+            logToElement(logElement, 'Начало загрузки данных через CSV...');
+            
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`;
+                logToElement(logElement, `Отправляем запрос по URL: ${url}`);
 
-        div.innerHTML = `
-          <h2>${row["Название"] || "Без названия"}</h2>
-          <p><strong>Год:</strong> ${row["Год"]}</p>
-          <p><strong>Материалы:</strong> ${row["Материалы"]}</p>
-          <p><strong>Размер:</strong> ${row["Размер"]}</p>
-          <p><strong>Описание:</strong> ${row["Описание"]}</p>
-          <p><strong>Техника:</strong> ${row["Техника"]}</p>
-          <p><strong>Выставки:</strong> ${(row["Выставки"] || "").split("; ").join("<br>")}</p>
-          <p><strong>Коллекции:</strong> ${(row["Коллекции"] || "").split("; ").join("<br>")}</p>
-          ${row["Изображение"] ? `<img src="${getImageUrl(row["Изображение"])}" alt="">` : ""}
-        `;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`Ошибка HTTP: ${response.status}. Возможно, таблица не опубликована.`);
+                }
 
-        container.appendChild(div);
-      });
-    }
+                const csvData = await response.text();
+                logToElement(logElement, 'CSV данные получены. Обрабатываем...');
 
-    function getImageUrl(link) {
-      const match = link.match(/file\/d\/([^\/]+)/);
-      if (match && match[1]) {
-        return `https://drive.google.com/uc?export=view&id= ${match[1]}`;
-      }
-      return "";
-    }
-  </script>
+                // Парсим CSV
+                const rows = csvData.split('\n');
+                if (rows.length === 0) {
+                    throw new Error('CSV файл пуст');
+                }
 
+                // Создаем HTML таблицу
+                let tableHtml = '<h3>Результат:</h3><table>';
+                
+                // Заголовки
+                const headers = rows[0].split(',');
+                tableHtml += '<tr>';
+                headers.forEach(header => {
+                    tableHtml += `<th>${header}</th>`;
+                });
+                tableHtml += '</tr>';
+
+                // Строки данных
+                for (let i = 1; i < rows.length; i++) {
+                    const cells = rows[i].split(',');
+                    tableHtml += '<tr>';
+                    cells.forEach(cell => {
+                        tableHtml += `<td>${cell}</td>`;
+                    });
+                    tableHtml += '</tr>';
+                }
+
+                tableHtml += '</table>';
+                document.getElementById(resultElement).innerHTML = tableHtml;
+                logToElement(logElement, 'CSV данные успешно преобразованы в таблицу');
+
+            } catch (error) {
+                logToElement(logElement, `Ошибка: ${error.message}`, true);
+                document.getElementById(resultElement).innerHTML = 
+                    `<p class="error">Ошибка при загрузке CSV: ${error.message}</p>
+                     <p>Убедитесь, что таблица опубликована (Файл → Публикация в Интернете → Опубликовать).</p>`;
+            }
+        }
+    </script>
 </body>
 </html>
